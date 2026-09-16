@@ -1,4 +1,3 @@
-# Import Python packages
 import streamlit as st
 from snowflake.snowpark.functions import col
 
@@ -6,28 +5,35 @@ from snowflake.snowpark.functions import col
 st.title(":cup_with_straw: Customize Your Smoothie! :cup_with_straw:")
 st.write("Choose the fruits you want in your custom smoothie!")
 
-# Connect to the active Snowflake session
-session = get_active_session()
-
-cnx = st.connection("snowflake")
-session = cnx.session()
+# Connect to Snowflake using Streamlit Secrets
+connection = st.connection("snowflake")
+session = connection.session()
 
 # Customer name
 name_on_order = st.text_input("Name on Smoothie:")
 
 if name_on_order:
-    st.write("The name on your smoothie will be:", name_on_order)
+    st.write(
+        "The name on your smoothie will be:",
+        name_on_order
+    )
 
-# Retrieve available fruit options
-my_dataframe = (
+# Retrieve the available fruit options
+fruit_rows = (
     session.table("smoothies.public.fruit_options")
     .select(col("FRUIT_NAME"))
+    .collect()
 )
+
+fruit_options = [
+    row["FRUIT_NAME"]
+    for row in fruit_rows
+]
 
 # Ingredient selection
 ingredients_list = st.multiselect(
     "Choose up to 5 ingredients:",
-    my_dataframe,
+    options=fruit_options,
     max_selections=5
 )
 
@@ -37,17 +43,29 @@ if ingredients_list:
 
     if st.button("Submit Order"):
         if not name_on_order.strip():
-            st.warning("Please enter a name for your smoothie.")
+            st.warning(
+                "Please enter a name for your smoothie."
+            )
         else:
-            my_insert_stmt = """
+            insert_statement = """
                 INSERT INTO smoothies.public.orders
                     (ingredients, name_on_order)
                 VALUES (?, ?)
             """
 
-            session.sql(
-                my_insert_stmt,
-                params=[ingredients_string, name_on_order.strip()]
-            ).collect()
+            try:
+                session.sql(
+                    insert_statement,
+                    params=[
+                        ingredients_string,
+                        name_on_order.strip()
+                    ]
+                ).collect()
 
-            st.success("Your smoothie is ordered!", icon="✅")
+                st.success(
+                    "Your smoothie is ordered!",
+                    icon="✅"
+                )
+
+            except Exception as error:
+                st.error(f"Unable to submit the order: {error}")
